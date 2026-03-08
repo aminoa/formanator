@@ -18,6 +18,7 @@ interface Arguments {
   processedDirectory?: string;
   openaiApiKey?: string;
   githubToken?: string;
+  benefit?: string;
 }
 
 // Supported file extensions for receipts
@@ -96,6 +97,10 @@ command
   )
   .option('--access-token <access_token>', 'Access token used to authenticate with Forma')
   .option(
+    '--benefit <benefit>',
+    'Force all claims to use this benefit (e.g. "Lifestyle"). The LLM will still infer the category within this benefit.',
+  )
+  .option(
     '--openai-api-key <openai_token>',
     'An optional OpenAI API key used to infer claim details from receipt images. This can also be configured using the `OPENAI_API_KEY` environment variable. You must provide this or a --github-token.',
     process.env.OPENAI_API_KEY,
@@ -107,7 +112,7 @@ command
   )
   .action(
     actionRunner(async (opts: Arguments) => {
-      const { directory, openaiApiKey, githubToken } = opts;
+      const { directory, openaiApiKey, githubToken, benefit: benefitOverride } = opts;
 
       const accessToken = opts.accessToken ?? getAccessToken();
 
@@ -148,7 +153,25 @@ command
       console.log();
 
       // Get benefits and categories for inference
-      const benefitsWithCategories = await getBenefitsWithCategories(accessToken);
+      // When a benefit override is specified, only fetch categories for that benefit
+      // to avoid errors from other benefits that may have configuration issues.
+      const allBenefitsWithCategories = await getBenefitsWithCategories(accessToken, benefitOverride);
+
+      // Validate benefit override if provided
+      if (benefitOverride) {
+        const matchingBenefit = allBenefitsWithCategories.find(
+          (b) => b.name === benefitOverride,
+        );
+        if (!matchingBenefit) {
+          const validBenefits = allBenefitsWithCategories.map((b) => b.name).join(', ');
+          throw new Error(
+            `Invalid benefit '${benefitOverride}'. Valid benefits are: ${validBenefits}`,
+          );
+        }
+        console.log(chalk.magenta(`Benefit override: all claims will use "${benefitOverride}"`));
+      }
+
+      const effectiveBenefitsWithCategories = allBenefitsWithCategories;
 
       let processedCount = 0;
       let skippedCount = 0;
@@ -167,10 +190,15 @@ command
           console.log('Analyzing receipt...');
           const inferredDetails = await attemptToInferAllFromReceipt({
             receiptPath: receiptFile,
-            benefitsWithCategories,
+            benefitsWithCategories: effectiveBenefitsWithCategories,
             openaiApiKey,
             githubToken,
           });
+
+          // Apply benefit override if specified
+          if (benefitOverride) {
+            inferredDetails.benefit = benefitOverride;
+          }
 
           // Display inferred details to user
           console.log(chalk.green('\nInferred claim details:'));

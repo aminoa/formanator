@@ -267,8 +267,12 @@ export const getBenefits = async (accessToken: string): Promise<Benefit[]> => {
 
 export const getBenefitsWithCategories = async (
   accessToken: string,
+  benefitNameFilter?: string,
 ): Promise<BenefitWithCategories[]> => {
-  const benefits = await getBenefits(accessToken);
+  const allBenefits = await getBenefits(accessToken);
+  const benefits = benefitNameFilter
+    ? allBenefits.filter((b) => b.name === benefitNameFilter)
+    : allBenefits;
 
   return await Promise.all(
     benefits.map(async (benefit) => {
