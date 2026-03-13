@@ -1,7 +1,7 @@
 import * as commander from 'commander';
 import chalk from 'chalk';
 
-import { actionRunner } from '../utils.js';
+import { actionRunner, editClaimDetails } from '../utils.js';
 import { getAccessToken } from '../config.js';
 import { createClaim, getBenefitsWithCategories } from '../forma.js';
 import { claimParamsToCreateClaimOptions } from '../claims.js';
@@ -126,23 +126,37 @@ command
           githubToken,
         });
 
-        console.log(
-          chalk.cyan('The LLM inferred the following details from your receipt:'),
-        );
-        console.log(`Amount: ${chalk.magenta(inferredDetails.amount)}`);
-        console.log(`Merchant: ${chalk.magenta(inferredDetails.merchant)}`);
-        console.log(`Purchase Date: ${chalk.magenta(inferredDetails.purchaseDate)}`);
-        console.log(`Description: ${chalk.magenta(inferredDetails.description)}`);
-        console.log(`Benefit: ${chalk.magenta(inferredDetails.benefit)}`);
-        console.log(`Category: ${chalk.magenta(inferredDetails.category)}`);
-        console.log();
-        console.log(
-          `If these details look correct, hit Enter to proceed. If not, press Ctrl + C to end your session.`,
-        );
-        prompt('> ');
+        let claimDetails = { ...inferredDetails };
+        let confirmed = false;
+
+        while (!confirmed) {
+          console.log(
+            chalk.cyan('The LLM inferred the following details from your receipt:'),
+          );
+          console.log(`Amount: ${chalk.magenta(claimDetails.amount)}`);
+          console.log(`Merchant: ${chalk.magenta(claimDetails.merchant)}`);
+          console.log(`Purchase Date: ${chalk.magenta(claimDetails.purchaseDate)}`);
+          console.log(`Description: ${chalk.magenta(claimDetails.description)}`);
+          console.log(`Benefit: ${chalk.magenta(claimDetails.benefit)}`);
+          console.log(`Category: ${chalk.magenta(claimDetails.category)}`);
+          console.log();
+          console.log(
+            'Enter Y to proceed, N to cancel, or E to edit:',
+          );
+          const userResponse = prompt('> ').trim().toLowerCase();
+
+          if (userResponse === 'y' || userResponse === 'yes') {
+            confirmed = true;
+          } else if (userResponse === 'e' || userResponse === 'edit') {
+            claimDetails = editClaimDetails(claimDetails);
+          } else {
+            console.log(chalk.yellow('Claim cancelled.'));
+            return;
+          }
+        }
 
         const createClaimOptions = await claimParamsToCreateClaimOptions(
-          { ...inferredDetails, receiptPath: opts.receiptPath },
+          { ...claimDetails, receiptPath: opts.receiptPath },
           accessToken,
         );
         await createClaim(createClaimOptions);

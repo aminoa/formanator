@@ -3,7 +3,7 @@ import { readdirSync, existsSync, mkdirSync, renameSync } from 'fs';
 import { join, extname, basename } from 'path';
 import chalk from 'chalk';
 
-import { actionRunner, prompt } from '../utils.js';
+import { actionRunner, prompt, editClaimDetails } from '../utils.js';
 import { getAccessToken } from '../config.js';
 import { createClaim, getBenefitsWithCategories } from '../forma.js';
 import { claimParamsToCreateClaimOptions } from '../claims.js';
@@ -200,28 +200,41 @@ command
             inferredDetails.benefit = benefitOverride;
           }
 
-          // Display inferred details to user
-          console.log(chalk.green('\nInferred claim details:'));
-          console.log(`  Amount: ${chalk.yellow(inferredDetails.amount)}`);
-          console.log(`  Merchant: ${chalk.yellow(inferredDetails.merchant)}`);
-          console.log(`  Purchase Date: ${chalk.yellow(inferredDetails.purchaseDate)}`);
-          console.log(`  Description: ${chalk.yellow(inferredDetails.description)}`);
-          console.log(`  Benefit: ${chalk.yellow(inferredDetails.benefit)}`);
-          console.log(`  Category: ${chalk.yellow(inferredDetails.category)}`);
+          // Display inferred details and prompt for confirmation
+          let claimDetails = { ...inferredDetails };
+          let confirmed = false;
+          let skipped = false;
 
-          // Prompt user for confirmation
-          console.log(
-            chalk.white(
-              '\nDo you want to submit this claim? Enter Y to proceed or N to skip:',
-            ),
-          );
-          const userResponse = prompt('> ').trim().toLowerCase();
+          while (!confirmed && !skipped) {
+            console.log(chalk.green('\nInferred claim details:'));
+            console.log(`  Amount: ${chalk.yellow(claimDetails.amount)}`);
+            console.log(`  Merchant: ${chalk.yellow(claimDetails.merchant)}`);
+            console.log(`  Purchase Date: ${chalk.yellow(claimDetails.purchaseDate)}`);
+            console.log(`  Description: ${chalk.yellow(claimDetails.description)}`);
+            console.log(`  Benefit: ${chalk.yellow(claimDetails.benefit)}`);
+            console.log(`  Category: ${chalk.yellow(claimDetails.category)}`);
 
-          if (userResponse === 'y' || userResponse === 'yes') {
+            console.log(
+              chalk.white(
+                '\nDo you want to submit this claim? Enter Y to proceed, N to skip, or E to edit:',
+              ),
+            );
+            const userResponse = prompt('> ').trim().toLowerCase();
+
+            if (userResponse === 'y' || userResponse === 'yes') {
+              confirmed = true;
+            } else if (userResponse === 'e' || userResponse === 'edit') {
+              claimDetails = editClaimDetails(claimDetails);
+            } else {
+              skipped = true;
+            }
+          }
+
+          if (confirmed) {
             // Submit the claim
             console.log('Submitting claim...');
             const createClaimOptions = await claimParamsToCreateClaimOptions(
-              { ...inferredDetails, receiptPath: [receiptFile] },
+              { ...claimDetails, receiptPath: [receiptFile] },
               accessToken,
             );
             await createClaim(createClaimOptions);
